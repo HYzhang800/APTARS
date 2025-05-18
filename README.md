@@ -68,7 +68,7 @@ echo "  - cdna_cupcake=22.0.0" >> SQANTI3-4.2/SQANTI3.conda_env.yml
 Clone the directory:
 
 ```bash
-git clone --recursive https://github.com/sid-sethi/APTARS.git
+git clone --recursive https://github.com/HYzhang800/APTARS.git
 ```
 
 Create conda environment for the pipeline which will install all the dependencies:
@@ -84,7 +84,7 @@ Edit `config.yml` to set up the working directory and input files/directories. `
 
 ```bash
 cd APTARS
-conda activate aptars
+conda activate SQANTI3_aptars
 snakemake --use-conda -j <num_cores> all
 ```
 It is a good idea to do a dry run (using -n parameter) to view what would be done by the pipeline before executing the pipeline.
