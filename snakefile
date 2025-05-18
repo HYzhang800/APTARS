@@ -23,113 +23,177 @@ shutil.copy2(SNAKEDIR + "/config.yml", WORKDIR)
 sample = config["sample_name"]
 gene_ids = config["genes"]
 
-
-# reading primer IDs into a list
-primer_ids = []
-five_p = ""
-if config.get("primers"):
-    records = list(SeqIO.parse(config["primers"], "fasta"))
-    for seq in records:
-        if search("_5p", seq.id):
-            five_p = seq.id.replace("-", "_")
-        else:
-            primer_ids.append(seq.id.replace("-", "_"))
-
 # ----------------------------------------------------------------
 
 
 rule all:
     input:
+        "Collapsed_isoforms/" + sample + ".mapped_fl_count.txt",
         "Sqanti/" + sample + "_classification.txt"
 
 #########################################################################
 
 
-rule generate_consensus_reads:
+
+bam1 = config["input_bam1"]
+bam2 = config.get("input_bam2")
+
+
+primer1 = config["primers1"]
+primer2 = config.get("primers2")
+
+
+
+#hifi_bam_array = [bam1, bam2]
+#primers_array = [primer1, primer2]
+
+hifi_bam_array = [bam1]
+primers_array = [primer1]
+batch = ["batch1"]
+
+
+
+if bam2 is not None and primer2 is not None:
+    hifi_bam_array.append(bam2)
+    primers_array.append(primer2)
+    batch.append("batch2")
+
+#batch = ["batch1", "batch2"]
+
+
+primer_ids = {}
+five_p = {}
+
+for b, p, n in zip(hifi_bam_array, primers_array, batch):
+
+    # Initialise lists for:
+    primer_ids[n] = []
+    five_p[n] = ""
+
+    #if config.get("primers"):
+    records = list(SeqIO.parse(p, "fasta"))
+    for seq in records:
+        if search("_5p", seq.id):
+            five_p[n] = seq.id.replace("-", "_")
+        else:
+            primer_ids[n].append(seq.id.replace("-", "_"))
+
+
+
+    rule:
+      name: f"{n}_demultiplex"
+      input:
+          hifi_bam = f"{b}",
+          primers = f"{p}"
+
+      output:
+          bams = expand("Demultiplexed/" + sample + "." + str(five_p[n]) + "--{ids}.bam", ids=primer_ids[n])
+
+      params:
+          outfile = "Demultiplexed/" + sample + ".bam"
+
+      threads: config["threads"]
+
+      shell:
+          """
+          lima {input.hifi_bam} {input.primers} {params.outfile} -j {threads} --isoseq --peek-guess
+          """
+
+
+
+
+    rule:
+      name: f"{n}_generate_fofn"
+      input:
+          bams = expand("Demultiplexed/" + sample + "." + str(five_p[n]) + "--{ids}.bam", ids=primer_ids[n])
+      output:
+          fofn = f"Demultiplexed/{n}.fofn"
+
+      run:
+          #textfile = open(output.fofn, "w")
+          #for element in primer_ids[n]:
+          #    textfile.write(sample + "." + five_p[n] + "--" + element + ".bam\n")
+          #textfile.close()
+          with open(output.fofn, "w") as textfile:
+             for bam in input.bams:
+                   filename = os.path.basename(bam)
+                   textfile.write(filename + "\n")
+
+
+
+
+    rule:
+      name: f"{n}_refine"
+      input:
+          fofn = f"Demultiplexed/{n}.fofn",
+          primers = f"{p}"
+          #primers = config.get("primers", "")
+
+      output:
+          flnc = f"Refine/{n}_flnc.bam",
+          refine_report = f"Refine/{n}_flnc.report.csv"
+
+      params:
+          logfile = f"Refine/{n}_refine.log"
+
+      threads: config["threads"]
+
+      shell:
+          """
+          isoseq refine --require-polya --log-level DEBUG --log-file {params.logfile} -j {threads} {input.fofn} {input.primers} {output.flnc}
+          """
+
+
+
+rule generate_flnc_fofn:
     input:
-        bam = config["input_bam"]
-        #bam = config.get("input_bam", "")
-
-    output:
-        ccs_bam = "Consensus_reads/" + sample + "_ccs.bam"
-
-    threads: config["threads"]
-
-    shell:
-        """
-        ccs {input.bam} {output.ccs_bam} --minLength 10 --maxLength 50000 --minPasses 3 --minSnr 2.5 --maxPoaCoverage 0 --minPredictedAccuracy 0.99 -j {threads}
-        """
-
-
-
-rule demultiplex:
-    input:
-        ccs_bam = rules.generate_consensus_reads.output.ccs_bam,
-        primers = config["primers"]
-        #primers = config.get("primers", "")
-
-    output:
-        bams = expand("Demultiplexed/" + sample + "." + five_p + "--{ids}.bam", ids=primer_ids)
-
-    params:
-        outfile = "Demultiplexed/" + sample + ".bam"
-
-    threads: config["threads"]
-
-    shell:
-        """
-        lima {input.ccs_bam} {input.primers} {params.outfile} -j {threads} --isoseq --peek-guess
-        """
-
-
-
-
-rule generate_fofn:
-    input:
-        bams = expand("Demultiplexed/" + sample + "." + five_p + "--{ids}.bam", ids=primer_ids)
-
-    output:
-        fofn = "Demultiplexed/" + sample + ".fofn"
-
+          flncs = expand("Refine/{batch_number}_flnc.bam", batch_number=batch)
+    output:                                                                                                             
+          flnc_fofn = "Refine/" + sample + "_flnc.fofn"
     run:
-        textfile = open(output.fofn, "w")
-        for element in primer_ids:
-            textfile.write(sample + "." + five_p + "--" + element + ".bam\n")
-        textfile.close()
+          textfile = open(output.flnc_fofn, "w")
+          for flnc in input.flncs:
+            textfile.write(flnc.replace("Refine/", "") + "\n")
+          textfile.close()
 
 
 
-
-rule refine:
+rule merge_refine_reports:
     input:
-        fofn = rules.generate_fofn.output.fofn,
-        primers = config["primers"]
-        #primers = config.get("primers", "")
-
+          refine_reports = expand("Refine/{n}_flnc.report.csv", n=batch),
+          flnc_fofn = rules.generate_flnc_fofn.output.flnc_fofn
     output:
-        flnc = "Refine/" + sample + "_flnc.bam",
-        refine_report = "Refine/" + sample + "_flnc.report.csv"
+          merged_report = "Refine/merged_refine_reports.csv"
+    run:
+       with open(output.merged_report, "w") as merged_file:
+           merged_file.write("id,strand,fivelen,threelen,polyAlen,insertlen,primer\n")
+           #seen_lines = set()
+           for report_file in input.refine_reports:
+               with open(report_file, 'r') as report:
+                 next(report)
+                 for line in report:
+                    #if line not in seen_lines:
+                       merged_file.write(line)
+                       #seen_lines.add(line)
 
-    params:
-        logfile = "Refine/" + sample + "_refine.log"
-
-    threads: config["threads"]
-
-    shell:
-        """
-        isoseq3 refine --require-polya --log-level DEBUG --log-file {params.logfile} -j {threads} {input.fofn} {input.primers} {output.flnc}
-        """
-
+#        # Read all the CSV files into a single DataFrame
+#          df = pd.concat([pd.read_csv(report_file) for report_file in input.refine_reports])
+#
+#        # Drop duplicate rows based on the values in column 'id', keeping only the first occurrence
+#          df.drop_duplicates(keep='first', inplace=True)
+#          #df.drop_duplicates(subset=['id'], keep='first', inplace=True)
+#        # Write the merged DataFrame to the output CSV file
+#          df.to_csv(output.merged_report, index=False)
 
 
 
 rule cluster:
     input:
-        flnc = rules.refine.output.flnc
-
+        fofn = rules.generate_flnc_fofn.output.flnc_fofn,
+        merged_report = rules.merge_refine_reports.output.merged_report
     output:
         clustered = "Cluster/" + sample + "_clustered.bam",
-        hq_fasta = "Cluster/" + sample + "_clustered.hq.fasta.gz",
+        #hq_fasta = "Cluster/" + sample + "_clustered.hq.fasta.gz",
         report = "Cluster/" + sample + "_clustered.cluster_report.csv"
 
     params:
@@ -139,15 +203,26 @@ rule cluster:
 
     shell:
         """
-        isoseq3 cluster --use-qvs --verbose -j {threads} --log-file {params.logfile} {input.flnc} {output.clustered}
+        isoseq cluster2 -j {threads} --log-file {params.logfile} {input.fofn} {output.clustered}
         """
 
+rule get_cluster_fasta:
+    input:
+         cluster = rules.cluster.output.clustered
+    output:
+         hq_fasta = "Cluster/" + sample + "_clustered.hq.fasta.gz"
+    params:
+         samplename = sample
+    shell:
+        """
+        bam2fasta -o "Cluster/"{params.samplename}"_clustered.hq" {input.cluster}
+        """
 
 
 rule minimap_mapping:
     input:
         genome = config["genome"],
-        fa = rules.cluster.output.hq_fasta
+        fa = rules.get_cluster_fasta.output.hq_fasta
 
     output:
         sam = "Mapping/" + sample + "_minimap.sam"
@@ -178,7 +253,7 @@ rule sort_sam:
 
 rule gunzip_fa:
     input:
-        fa_gz = rules.cluster.output.hq_fasta
+        fa_gz = rules.get_cluster_fasta.output.hq_fasta
 
     output:
         fa = "Cluster/" + sample + "_clustered.hq.fasta"
@@ -273,7 +348,7 @@ rule get_abundance_demux:
     input:
         mapped_fa = rules.collapse_isoforms.output.mapped_fa,
         read_stat = rules.get_abundance_all.output.read_stat,
-        classify_csv = rules.refine.output.refine_report
+        classify_csv = rules.merge_refine_reports.output.merged_report
 
     output:
         abund = "Collapsed_isoforms/" + sample + ".mapped_fl_count.txt"
@@ -290,7 +365,7 @@ rule get_abundance_demux:
 rule sqanti_qc:
     input:
         isoforms = rules.collapse_isoforms.output.gff,
-        fl_count = rules.get_abundance_demux.output.abund if config.get("primers") else rules.get_abundance_all.output.abund,
+        fl_count = rules.get_abundance_demux.output.abund if config.get("primers1") else rules.get_abundance_all.output.abund,
         gtf = config["gtf"],
         genome = config["genome"],
         cage = config["cage"],
@@ -312,7 +387,7 @@ rule sqanti_qc:
 
     log: "Sqanti/" + sample + "_sqanti.log"
 
-    conda: config["sqanti_dir"] + "/SQANTI3.conda_env.yml"
+    #conda: config["sqanti_dir"] + "/SQANTI3.conda_env.yml"
 
     shell:
         """
