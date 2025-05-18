@@ -14,7 +14,7 @@ genome: "/references/GRCh38.primary_assembly.genome.fa"
 input_bam: ""
 
 # primers in fasta format
-primers: "/primers.fa"
+primers: "/home/ucbthae/APTARS/231019_all_used_primers.fa"
 
 # threads (default = 30)
 threads: 30
