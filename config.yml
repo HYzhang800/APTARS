@@ -32,6 +32,6 @@ polya_atlas: "/atlas.clusters.2.0.GRCh38.96.mod.bed"
 # Genes of interest (optional; default = ""): Only the reads overlapping the gene locus will be selected from the SAM file.
 # format: gene_id of genes from the GTF file provided
 # multiple genes can be provided seperated by a ";". For e.g., "ENSG00000145335.17;ENSG00000247775.2"
-genes: "ENSG00000145335.17"
+genes: "ENSG00000188603.22" # CLN3
 
 
