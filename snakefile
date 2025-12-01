@@ -87,7 +87,7 @@ for b, p, n in zip(hifi_bam_array, primers_array, batch):
           primers = f"{p}"
 
       output:
-          bams = expand("Demultiplexed/" + sample + "." + str(five_p[n]) + "--{ids}.bam", ids=primer_ids[n])
+          bams = touch(expand("Demultiplexed/" + sample + "." + str(five_p[n]) + "--{ids}.bam", ids=primer_ids[n]))
 
       params:
           outfile = "Demultiplexed/" + sample + ".bam"
@@ -393,3 +393,4 @@ rule sqanti_qc:
         """
         (PYTHONPATH=$CONDA_PREFIX/bin python {params.sqanti_dir}/sqanti3_qc.py {input.isoforms} {input.gtf} {input.genome} --cage_peak {input.cage} --polyA_peak {input.poly_peak} --polyA_motif_list {input.poly_motifs} -c {input.sjs} -t {threads} --chunks {params.chunks} --output {params.prefix} --dir {params.res_dir} --report skip -fl {input.fl_count}) 2> {log}
         """
+
