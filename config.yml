@@ -11,11 +11,11 @@ sample_name: ""
 genome: "/references/GRCh38.primary_assembly.genome.fa"
 
 # input subreads BAM
-input_bam: ""
-
+input_bam1: ""
+input_bam2: "" 
 # primers in fasta format
-primers: "/home/ucbthae/APTARS/231019_all_used_primers.fa"
-
+primers1: "/home/ucbthae/APTARS/231019_all_used_primers.fa"
+primers2: "" 
 # threads (default = 30)
 threads: 30
 
@@ -33,5 +33,6 @@ polya_atlas: "/atlas.clusters.2.0.GRCh38.96.mod.bed"
 # format: gene_id of genes from the GTF file provided
 # multiple genes can be provided seperated by a ";". For e.g., "ENSG00000145335.17;ENSG00000247775.2"
 genes: "ENSG00000188603.22" # CLN3
+
 
 
